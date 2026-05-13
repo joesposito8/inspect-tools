@@ -17,7 +17,7 @@ from inspect_ai.solver import TaskState
 from inspect_ai.tool import Tool, ToolDef
 from inspect_ai.tool._tool_params import ToolParams
 
-from inspect_context_pressure._types import ToolSchema
+from inspect_tools._types import ToolSchema
 
 # Approximates OpenAI's per-function-call token accounting overhead (delimiters,
 # `"type": "function"` wrapper). Drop into the per-schema cost.

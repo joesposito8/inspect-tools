@@ -1,5 +1,5 @@
 [project]
-name = "inspect_context_pressure"
+name = "inspect-tools"
 version = "0.1.0dev0"
 description = "Context-pressure measurement Solver for Inspect: tools-channel schema injection at varied depths"
 readme = "HANDOFF.md"
@@ -20,7 +20,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["inspect_context_pressure"]
+packages = ["inspect_tools"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

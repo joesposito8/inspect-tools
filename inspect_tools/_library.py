@@ -1,5 +1,5 @@
-from inspect_context_pressure._fixtures import FIXTURE_SCHEMAS
-from inspect_context_pressure._types import ToolSchema
+from inspect_tools._fixtures import FIXTURE_SCHEMAS
+from inspect_tools._types import ToolSchema
 
 
 def load_fixture_library() -> list[ToolSchema]:

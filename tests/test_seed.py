@@ -1,4 +1,4 @@
-from inspect_context_pressure._seed import derive_seed
+from inspect_tools._seed import derive_seed
 
 
 def test_derive_seed_deterministic():

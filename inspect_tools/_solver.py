@@ -1,4 +1,4 @@
-"""``context_pressure()`` Solver — additive tool-schema injection at depth.
+"""``context_exhaustion()`` Solver — additive tool-schema injection at depth.
 
 Precedence rule:
 - ``depth_schedule`` not None and ``state.metadata['target_tokens']`` is set:
@@ -16,15 +16,15 @@ import random
 import tiktoken
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 
-from inspect_context_pressure._inject import (
+from inspect_tools._inject import (
     FILLER_INVOCATION_KEY,
     count_schema_tokens,
     count_tools_tokens,
     inject_filler_tools,
 )
-from inspect_context_pressure._library import filter_pool, load_fixture_library
-from inspect_context_pressure._seed import derive_seed
-from inspect_context_pressure._types import ToolSchema
+from inspect_tools._library import filter_pool, load_fixture_library
+from inspect_tools._seed import derive_seed
+from inspect_tools._types import ToolSchema
 
 DEFAULT_DEPTH_SCHEDULE: list[int] = [4_000, 16_000, 64_000, 256_000]
 
@@ -55,7 +55,7 @@ def _greedy_n_for_target(
 
 
 @solver
-def context_pressure(
+def context_exhaustion(
     composition_spec: dict | None = None,
     pool_size: int = 5,
     depth_schedule: list[int] | None = DEFAULT_DEPTH_SCHEDULE,

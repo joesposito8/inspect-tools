@@ -1,4 +1,4 @@
-from inspect_context_pressure._types import ToolSchema
+from inspect_tools._types import ToolSchema
 
 # 8 Category-A schemas across the 7 domains + 2 Category-B vacuous controls.
 # Real-shaped MCP-style JSON; ICP-4 ships the scraped corpus that replaces this.

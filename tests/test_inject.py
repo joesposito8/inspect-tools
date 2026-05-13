@@ -1,5 +1,5 @@
-from inspect_context_pressure._fixtures import FIXTURE_SCHEMAS
-from inspect_context_pressure._inject import (
+from inspect_tools._fixtures import FIXTURE_SCHEMAS
+from inspect_tools._inject import (
     FILLER_INVOCATION_KEY,
     count_schema_tokens,
     count_tools_tokens,

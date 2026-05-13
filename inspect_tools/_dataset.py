@@ -1,4 +1,4 @@
-"""Dataset helpers for the context_pressure Solver."""
+"""Dataset helpers for the context_exhaustion Solver."""
 
 from __future__ import annotations
 

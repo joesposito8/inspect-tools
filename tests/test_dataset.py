@@ -1,6 +1,6 @@
 from inspect_ai.dataset import MemoryDataset, Sample
 
-from inspect_context_pressure import replicate_across_depths
+from inspect_tools import replicate_across_depths
 
 
 def _samples():
