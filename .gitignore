@@ -3,3 +3,7 @@ tmp/
 __pycache__/
 *.pyc
 .curation_state.json
+.venv/
+.pytest_cache/
+.claude/
+*.egg-info/
