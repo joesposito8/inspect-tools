@@ -19,66 +19,62 @@ from inspect_ai.tool._tool_params import ToolParams
 
 from inspect_context_pressure._types import ToolSchema
 
-# Per-schema overhead approximating OpenAI function-call accounting (delimiters,
-# `"type": "function"` wrapper, etc.). Empirically ~4 tokens.
+# Approximates OpenAI's per-function-call token accounting overhead (delimiters,
+# `"type": "function"` wrapper). Drop into the per-schema cost.
 _PER_SCHEMA_OVERHEAD_TOKENS = 4
 
 FILLER_INVOCATION_KEY = "filler_invocations"
+FILLER_NOOP_RESPONSE = "This is a no-op tool. Recorded as filler invocation."
+
 NoOpFn = Callable[..., Awaitable[str]]
 
 
-def _serialize_tooldef_for_counting(td: ToolDef) -> str:
+def _openai_payload(name: str, description: str, parameters: dict) -> str:
     """Canonical OpenAI function-shape JSON used only for token counting."""
     payload = {
         "type": "function",
         "function": {
-            "name": td.name,
-            "description": td.description,
-            "parameters": td.parameters.model_dump(exclude_none=True),
+            "name": name,
+            "description": description,
+            "parameters": parameters,
         },
     }
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return json.dumps(payload, separators=(",", ":"))
 
 
 def count_tools_tokens(tools: list[Tool], encoding: tiktoken.Encoding) -> int:
-    """Sum tokens of the OpenAI-shape serialization of each tool, plus overhead.
-
-    Counting proxy — not the wire format. ``encoding`` is a tiktoken Encoding
-    (typically ``tiktoken.get_encoding("cl100k_base")``).
-    """
+    """Sum tokens of the OpenAI-shape serialization of each tool, plus overhead."""
     total = 0
     for tool in tools:
         td = ToolDef(tool)
-        total += len(encoding.encode(_serialize_tooldef_for_counting(td)))
-        total += _PER_SCHEMA_OVERHEAD_TOKENS
+        body = _openai_payload(
+            td.name, td.description, td.parameters.model_dump(exclude_none=True)
+        )
+        total += len(encoding.encode(body)) + _PER_SCHEMA_OVERHEAD_TOKENS
     return total
 
 
 def count_schema_tokens(schema: ToolSchema, encoding: tiktoken.Encoding) -> int:
     """Token cost of a raw schema dict, matching the same OpenAI function shape."""
-    payload = {
-        "type": "function",
-        "function": {
-            "name": schema["name"],
-            "description": schema["description"],
-            "parameters": schema["parameters"],
-        },
-    }
-    body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    body = _openai_payload(schema["name"], schema["description"], schema["parameters"])
     return len(encoding.encode(body)) + _PER_SCHEMA_OVERHEAD_TOKENS
 
 
-def _make_filler_noop(state: TaskState) -> NoOpFn:
-    """Build a per-state async no-op that records its own invocation.
+def _make_filler_noop(state: TaskState | None) -> NoOpFn:
+    """Build a fresh async no-op closure.
 
-    Each invocation increments ``state.metadata['filler_invocations']``. ICP-6
-    picks this up for the manifest. Returning a benign string (rather than
-    raising) avoids polluting eval scorers that count tool errors.
+    When ``state`` is provided, invocations increment
+    ``state.metadata['filler_invocations']`` for ICP-6 telemetry. Returning a
+    benign string (rather than raising) avoids polluting eval scorers that
+    count tool errors as model failures.
     """
 
     async def filler_noop(**kwargs: Any) -> str:
-        state.metadata[FILLER_INVOCATION_KEY] = state.metadata.get(FILLER_INVOCATION_KEY, 0) + 1
-        return "This is a no-op tool. Recorded as filler invocation."
+        if state is not None:
+            state.metadata[FILLER_INVOCATION_KEY] = (
+                state.metadata.get(FILLER_INVOCATION_KEY, 0) + 1
+            )
+        return FILLER_NOOP_RESPONSE
 
     return filler_noop
 
@@ -87,7 +83,7 @@ def _ensure_param_descriptions(params: dict) -> dict:
     """Walk a JSON-Schema parameters dict and fill missing field descriptions.
 
     Inspect's ``ToolDef`` validation rejects any parameter whose schema lacks a
-    ``description``. Real-world MCP schemas often omit them. We fill with a
+    ``description``. Real-world MCP schemas often omit them; we fill with a
     benign placeholder so injection never fails on under-documented schemas.
     """
     if not isinstance(params, dict):
@@ -107,19 +103,14 @@ def _ensure_param_descriptions(params: dict) -> dict:
 def to_inspect_tool_def(schema: ToolSchema, on_invoke: NoOpFn | None = None) -> ToolDef:
     """Adapt a ``ToolSchema`` to an Inspect ``ToolDef``.
 
-    If ``on_invoke`` is None, attaches a stateless async no-op that returns the
-    standard filler string but does not increment any counter (use the
-    state-bound variant from ``_make_filler_noop`` for telemetry).
+    If ``on_invoke`` is None, attaches a stateless async no-op that returns
+    the standard filler string but does not increment any counter.
 
     Explicit ``description=`` is required because all filler tools share the
     same callable body, and ``ToolDef``'s docstring inference would collide.
     """
     if on_invoke is None:
-
-        async def _stateless_noop(**kwargs: Any) -> str:
-            return "This is a no-op tool. Recorded as filler invocation."
-
-        on_invoke = _stateless_noop
+        on_invoke = _make_filler_noop(state=None)
 
     sanitized = _ensure_param_descriptions(schema["parameters"])
     return ToolDef(

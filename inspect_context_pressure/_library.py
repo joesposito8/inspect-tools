@@ -42,7 +42,7 @@ def filter_pool(
             allowed = set(spec_categories)
             pool = [s for s in pool if s["domain"] in allowed]
 
-        exclude_keywords = composition_spec.get("exclude_keywords") or composition_spec.get("exclude_topics")
+        exclude_keywords = composition_spec.get("exclude_keywords")
         if exclude_keywords:
             lowered = [kw.lower() for kw in exclude_keywords]
             pool = [

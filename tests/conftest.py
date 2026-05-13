@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+import tiktoken
 from inspect_ai.model import ModelName
 from inspect_ai.solver import TaskState
 from inspect_ai.tool import Tool, ToolDef
@@ -59,6 +60,11 @@ def dummy_tool():
 @pytest.fixture
 def dummy_tool_factory():
     return _make_dummy_tool
+
+
+@pytest.fixture
+def encoding():
+    return tiktoken.get_encoding("cl100k_base")
 
 
 @pytest.fixture

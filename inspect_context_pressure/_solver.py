@@ -1,17 +1,12 @@
 """``context_pressure()`` Solver — additive tool-schema injection at depth.
 
-Precedence rule (R1):
-- ``depth_schedule`` not None: N injected schemas is depth-derived. The Solver
-  reads ``state.metadata['target_tokens']`` (set by ``replicate_across_depths``
-  on each replicated sample), counts the eval's own tools-parameter token
-  baseline, and greedily samples additional schemas until total tokens reach
-  the target. ``pool_size`` is ignored.
-- ``depth_schedule`` is None: N = ``pool_size`` (literal count). Count-based
-  fallback path; mirrors AgentHarm's ``n_irrelevant_tools`` semantics.
-
-If ``depth_schedule`` is set but a sample lacks ``target_tokens`` metadata
-(i.e. the dataset wasn't passed through ``replicate_across_depths``), the
-Solver falls through to the ``pool_size`` path for that sample.
+Precedence rule:
+- ``depth_schedule`` not None and ``state.metadata['target_tokens']`` is set:
+  N injected schemas is depth-derived. The Solver counts the eval's own
+  tools-parameter token baseline and greedily samples additional schemas
+  until total tokens reach ``target_tokens``. ``pool_size`` is ignored.
+- Otherwise: N = ``pool_size`` (literal count). Mirrors AgentHarm's
+  ``n_irrelevant_tools`` semantics.
 """
 
 from __future__ import annotations
@@ -33,28 +28,30 @@ from inspect_context_pressure._types import ToolSchema
 
 DEFAULT_DEPTH_SCHEDULE: list[int] = [4_000, 16_000, 64_000, 256_000]
 
+CATEGORY_A = "A_general_popular"
+CATEGORY_B = "B_vacuous_controls"
 
-def _compute_n_for_target(
-    pool: list[ToolSchema],
+
+def _greedy_n_for_target(
+    pool_costs: list[int],
     remaining_tokens: int,
-    encoding: tiktoken.Encoding,
     rng: random.Random,
 ) -> int:
-    """Greedily pick schema count whose cumulative tokens reach ``remaining_tokens``.
+    """Pick schema count whose cumulative tokens reach ``remaining_tokens``.
 
-    Determinism: walks a single ``rng``-shuffled view of the pool, summing
-    schema costs until the budget is met or the pool is exhausted.
+    Walks an ``rng``-shuffled view of the precomputed cost list, summing until
+    the budget is met or the pool is exhausted.
     """
     if remaining_tokens <= 0:
         return 0
-    order = list(range(len(pool)))
+    order = list(range(len(pool_costs)))
     rng.shuffle(order)
     cumulative = 0
     for i, idx in enumerate(order, start=1):
-        cumulative += count_schema_tokens(pool[idx], encoding)
+        cumulative += pool_costs[idx]
         if cumulative >= remaining_tokens:
             return i
-    return len(pool)
+    return len(pool_costs)
 
 
 @solver
@@ -64,7 +61,7 @@ def context_pressure(
     depth_schedule: list[int] | None = DEFAULT_DEPTH_SCHEDULE,
     tokenizer: str = "cl100k_base",
     domain_filter: list[str] | None = None,
-    content_category: str = "A_general_popular",
+    content_category: str = CATEGORY_A,
     exclude_names: list[str] | None = None,
     extend_with: list[ToolSchema] | None = None,
 ) -> Solver:
@@ -82,9 +79,8 @@ def context_pressure(
         tokenizer: tiktoken encoding name. cl100k_base default; this is a
             counting proxy and approximates non-OpenAI provider tokenizers.
         domain_filter: Restrict pool to these domains.
-        content_category: ``A_general_popular`` (default) for standard
-            sampling, or ``B_vacuous_controls`` for ICP-7's Gamage-vs-Levy
-            isolation arm.
+        content_category: ``A_general_popular`` (default) or
+            ``B_vacuous_controls`` for ICP-7's Gamage-vs-Levy isolation arm.
         exclude_names: Block schemas by name (avoids collision with the
             wrapped eval's own tool names).
         extend_with: User-supplied schemas appended to the shipped pool.
@@ -93,37 +89,36 @@ def context_pressure(
     task's own solver list so the model run sees the inflated ``tools``
     parameter. The wrapped task's scorer is untouched.
     """
+    encoding = tiktoken.get_encoding(tokenizer)
+    pool = filter_pool(
+        load_fixture_library(),
+        domain_filter=domain_filter,
+        content_category=content_category,
+        exclude_names=exclude_names,
+        extend_with=extend_with,
+        composition_spec=composition_spec,
+    )
+    pool_costs = [count_schema_tokens(s, encoding) for s in pool]
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         if state.metadata is None:
             state.metadata = {}
         state.metadata.setdefault(FILLER_INVOCATION_KEY, 0)
 
-        pool = filter_pool(
-            load_fixture_library(),
-            domain_filter=domain_filter,
-            content_category=content_category,
-            exclude_names=exclude_names,
-            extend_with=extend_with,
-            composition_spec=composition_spec,
-        )
         if not pool:
             return state
 
         target = state.metadata.get("target_tokens")
         shape_seed = state.metadata.get("shape_seed", 0)
-        depth_for_seed = target if target is not None else 0
-        seed = derive_seed(state.sample_id, depth_for_seed, shape_seed)
+        seed = derive_seed(state.sample_id, target or 0, shape_seed)
         rng = random.Random(seed)
 
         if depth_schedule is not None and target is not None:
-            encoding = tiktoken.get_encoding(tokenizer)
             baseline = count_tools_tokens(state.tools, encoding)
-            n = _compute_n_for_target(pool, target - baseline, encoding, rng)
+            n = _greedy_n_for_target(pool_costs, target - baseline, rng)
         else:
-            n = pool_size
+            n = min(pool_size, len(pool))
 
-        n = max(0, min(n, len(pool)))
         if n == 0:
             return state
 
