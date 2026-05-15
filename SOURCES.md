@@ -24,8 +24,10 @@ MCP servers.
 - **Curation**: aggressive automated quality filters (Pydantic schema
   validation, JSON Schema check, placeholder/spam/dead-marker detection, token
   bounds) reduced to 1066 candidates; agentic + human chat curation across 7
-  per-domain batches reduced to **1,449 final tool schemas across 226 unique
-  MCP vendors** with cross-domain reclassifications applied.
+  per-domain batches, followed by a 5-axis rubric audit (vendor authenticity /
+  description naturalness / schema realism / deployment realism / corpus
+  contribution) reduced the corpus to **1,271 final tool schemas across 180
+  unique MCP vendors** with cross-domain reclassifications applied.
 
 ## Per-record attribution
 
@@ -51,16 +53,16 @@ attribution model is per-MCP via `source_url`.
 
 | Domain | Tool records |
 |---|---|
-| cloud-ops | 60 |
-| dev-tools | 129 |
-| data-analytics | 106 |
+| cloud-ops | 52 |
+| dev-tools | 111 |
+| data-analytics | 90 |
 | communication | 79 |
-| search | 50 |
-| productivity | 222 |
-| misc | 803 |
-| **total** | **1,449** |
+| search | 44 |
+| productivity | 216 |
+| misc | 679 |
+| **total** | **1,271** |
 
-226 unique MCP vendors, average ~6 tools per MCP (per-MCP cap of 10 enforced
+180 unique MCP vendors, average ~7 tools per MCP (per-MCP cap of 10 enforced
 at scrape time).
 
 All records carry `content_category: "general_popular"`. Future v1.x corpora
