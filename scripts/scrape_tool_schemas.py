@@ -51,18 +51,71 @@ CACHE_ROOT = Path.home() / ".cache" / "inspect_tools" / "scrape" / "smithery"
 OUT_PATH = Path(__file__).resolve().parents[1] / "inspect_tools" / "data" / "tool_schemas_v1.candidates.json"
 POLITE_DELAY_S = 1.0
 LIST_PAGE_SIZE = 50
-PER_DOMAIN_DETAIL_CAP = 5  # top N canonical servers per domain to fetch detail for
+PER_DOMAIN_DETAIL_CAP = 35  # top N verified servers per domain bucket to fetch detail for
+PER_MCP_TOOL_CAP = 10  # max tools per MCP server (caps slack/github bloat)
 
-# Per-domain search queries. The registry caps default-listing results at 500
-# (sorted by popularity), so domain-niche MCPs like AWS/K8s/Terraform fall
-# outside that window. We query per-domain to surface them.
-DOMAIN_QUERIES: dict[str, list[str]] = {
-    "cloud-ops": ["aws", "kubernetes", "terraform", "docker", "azure", "gcp"],
-    "dev-tools": ["github", "git", "gitlab", "npm", "vscode"],
-    "data-analytics": ["postgres", "bigquery", "snowflake", "clickhouse", "sql"],
-    "communication": ["slack", "discord", "email", "gmail", "twilio"],
-    "search": ["search", "browser", "scrape", "puppeteer"],
-    "productivity": ["notion", "jira", "calendar", "linear", "trello"],
+# Vendor allowlist per domain. Researched from awesome-mcp-servers lists +
+# Smithery/mcp.so featured + 2026 popularity rankings. Each name is queried
+# against Smithery; we pick the best verified match per name.
+VENDOR_ALLOWLIST: dict[str, list[str]] = {
+    "cloud-ops": [
+        "aws", "aws-s3", "aws-cloudwatch", "aws-billing", "aws-cdk", "gcp", "azure",
+        "azure-devops", "cloudflare", "wrangler", "vercel", "netlify", "heroku",
+        "render", "fly-io", "railway", "digitalocean", "linode", "kubernetes", "helm",
+        "argocd", "docker", "docker-hub", "terraform", "pulumi", "ansible", "jenkins",
+        "circleci", "github-actions", "buildkite", "datadog", "sentry", "grafana",
+        "prometheus", "pagerduty", "new-relic", "splunk", "opsgenie", "honeycomb",
+        "portainer",
+    ],
+    "dev-tools": [
+        "github", "gitlab", "bitbucket", "gitea", "git", "jetbrains", "vscode",
+        "intellij", "npm", "pypi", "cargo", "maven", "nuget", "packagist",
+        "sonarqube", "snyk", "semgrep", "codecov", "sourcegraph", "codacy", "eslint",
+        "prettier", "pre-commit", "gradle", "pnpm", "yarn", "bazel", "nx",
+        "turborepo", "copilot", "cursor", "ripgrep", "ast-grep", "changesets",
+    ],
+    "data-analytics": [
+        "postgres", "postgresql", "mysql", "mongodb", "mongodb-atlas", "sqlite",
+        "redis", "duckdb", "mssql", "oracle", "mariadb", "cockroachdb", "clickhouse",
+        "snowflake", "bigquery", "redshift", "databricks", "supabase", "planetscale",
+        "neon", "turso", "chroma", "pinecone", "weaviate", "qdrant", "milvus",
+        "elasticsearch", "opensearch", "algolia", "meilisearch", "typesense", "dbt",
+        "airbyte", "fivetran", "mixpanel", "amplitude", "segment", "posthog", "neo4j",
+        "influxdb",
+    ],
+    "communication": [
+        "slack", "discord", "mattermost", "microsoft-teams", "rocketchat", "telegram",
+        "whatsapp", "signal", "gmail", "outlook", "sendgrid", "mailgun", "resend",
+        "postmark", "twilio", "vonage", "bandwidth", "plivo", "messagebird",
+        "zendesk", "intercom", "freshdesk", "helpscout", "front", "zoom",
+        "google-meet", "webex", "agentmail", "nylas",
+    ],
+    "search": [
+        "brave-search", "google-search", "bing-search", "exa", "perplexity", "tavily",
+        "you-com", "linkup", "jina", "kagi", "serpapi", "duckduckgo", "puppeteer",
+        "playwright", "browserbase", "selenium", "stagehand", "hyperbrowser",
+        "browser-use", "firecrawl", "scrapegraphai", "apify", "scrapfly",
+        "bright-data", "wikipedia", "arxiv", "pubmed", "semantic-scholar",
+        "wolfram-alpha", "searxng", "crawl4ai",
+    ],
+    "productivity": [
+        "notion", "confluence", "coda", "quip", "google-docs", "google-sheets",
+        "microsoft-excel", "office365", "airtable", "smartsheet", "google-calendar",
+        "outlook-calendar", "calendly", "cal-com", "jira", "linear", "asana",
+        "trello", "monday", "clickup", "basecamp", "height", "shortcut", "todoist",
+        "plane", "wrike", "obsidian", "evernote", "bear", "logseq", "google-drive",
+        "dropbox", "box", "onedrive", "sharepoint",
+    ],
+    "misc": [
+        "stripe", "paypal", "square", "adyen", "plaid", "salesforce", "hubspot",
+        "pipedrive", "attio", "zoho-crm", "shopify", "woocommerce", "bigcommerce",
+        "magento", "mailchimp", "klaviyo", "braze", "customer-io", "typeform",
+        "google-forms", "jotform", "figma", "canva", "adobe", "framer", "openai",
+        "anthropic", "huggingface", "replicate", "elevenlabs", "runway", "zapier",
+        "make", "n8n", "pipedream", "composio", "rube", "auth0", "okta", "clerk",
+        "workos", "docusign", "workday", "rippling", "gusto", "quickbooks", "xero",
+        "netsuite",
+    ],
 }
 
 # --- Domain keyword rules ---------------------------------------------------
@@ -167,7 +220,7 @@ def cached_get(client: httpx.Client, url: str, subdir: str) -> dict | None:
 # --- Phase 1: List ----------------------------------------------------------
 
 
-def fetch_query_listings(client: httpx.Client, query: str, max_pages: int = 3) -> list[dict]:
+def fetch_query_listings(client: httpx.Client, query: str, max_pages: int = 2) -> list[dict]:
     """Paginate one search query, returning up to LIST_PAGE_SIZE * max_pages results."""
     listings: list[dict] = []
     for page in range(1, max_pages + 1):
@@ -184,38 +237,105 @@ def fetch_query_listings(client: httpx.Client, query: str, max_pages: int = 3) -
     return listings
 
 
-def fetch_all_listings(client: httpx.Client) -> list[dict]:
-    """Query per-domain to surface canonical servers across all 7 domains.
+def best_vendor_match(vendor_name: str, candidates: list[dict]) -> dict | None:
+    """Pick the best Smithery server for a vendor name.
 
-    The registry's default listing caps at 500 results sorted by popularity, which
-    over-represents search/communication MCPs and starves cloud-ops/data-analytics.
-    Per-domain keyword queries are how we cover all 7 domain quotas.
+    Preference order:
+    1. Exact qualifiedName match (canonical Smithery-hosted)
+    2. Verified namespaced match where slug==vendor_name OR qualifiedName endswith /vendor_name
+    3. Verified, highest useCount, vendor_name appears in qualifiedName
+    """
+    vlow = vendor_name.lower().replace("-", "").replace("_", "")
+    verified = [s for s in candidates if s.get("verified")]
+    if not verified:
+        return None
+
+    def name_norm(s: str) -> str:
+        return s.lower().replace("-", "").replace("_", "")
+
+    # Tier 1: exact qualifiedName match (canonical, slug='')
+    for s in verified:
+        if name_norm(s.get("qualifiedName") or "") == vlow:
+            return s
+
+    # Tier 2: namespaced where slug exactly matches vendor name
+    for s in verified:
+        slug = name_norm(s.get("slug") or "")
+        if slug == vlow:
+            return s
+
+    # Tier 3: vendor_name appears in qualifiedName, take highest useCount
+    matching = [s for s in verified if vlow in name_norm(s.get("qualifiedName") or "")]
+    if matching:
+        return max(matching, key=lambda s: s.get("useCount") or 0)
+
+    return None
+
+
+def fetch_all_listings(client: httpx.Client) -> list[tuple[dict, str]]:
+    """Two-pass listing collection:
+
+    Pass A (vendor allowlist): resolve each vendor name in VENDOR_ALLOWLIST to
+    its best Smithery match. Captures brand-recognizable canonical MCPs.
+
+    Pass B (top-N by useCount per domain): for each vendor query, also collect
+    the top verified results regardless of name match. Captures popular MCPs
+    that don't fit our exact-name expectations (e.g., papersearch/PaperSearcher,
+    aurelianflo/core, blockscout/mcp-server).
     """
     seen_qn: set[str] = set()
-    all_listings: list[dict] = []
-    for domain, queries in DOMAIN_QUERIES.items():
-        domain_total = 0
-        for q in queries:
-            servers = fetch_query_listings(client, q)
-            new_this_query = 0
-            for s in servers:
-                qn = s.get("qualifiedName")
-                if not qn or qn in seen_qn:
+    resolved: list[tuple[dict, str]] = []
+
+    # Pass A: vendor allowlist (exact-name preference)
+    for domain, vendors in VENDOR_ALLOWLIST.items():
+        per_domain_found = 0
+        for vendor in vendors:
+            candidates = fetch_query_listings(client, vendor)
+            match = best_vendor_match(vendor, candidates)
+            if match is None:
+                logger.info(f"vendor_unresolved domain={domain} vendor={vendor}")
+                continue
+            qn = match["qualifiedName"]
+            if qn in seen_qn:
+                continue
+            seen_qn.add(qn)
+            resolved.append((match, domain))
+            per_domain_found += 1
+            logger.info(f"vendor_resolved domain={domain} vendor={vendor} qn={qn} useCount={match.get('useCount')}")
+        logger.info(f"pass_a_domain_total domain={domain} resolved={per_domain_found}/{len(vendors)}")
+
+    # Pass B: top-N popular verified per domain bucket (catches non-allowlist popular MCPs)
+    POPULAR_PER_DOMAIN = 25
+    for domain, vendors in VENDOR_ALLOWLIST.items():
+        bucket_candidates: dict[str, dict] = {}
+        for vendor in vendors:
+            for s in fetch_query_listings(client, vendor):
+                if not s.get("verified"):
                     continue
-                seen_qn.add(qn)
-                all_listings.append(s)
-                new_this_query += 1
-                domain_total += 1
-            logger.info(f"listing_query domain={domain} q={q} new={new_this_query} cumulative_unique={len(all_listings)}")
-        logger.info(f"listing_domain_total domain={domain} new_unique={domain_total}")
-    return all_listings
+                qn = s.get("qualifiedName")
+                if not qn or qn in seen_qn or qn in bucket_candidates:
+                    continue
+                bucket_candidates[qn] = s
+        # Top-N by useCount among non-already-resolved
+        top = sorted(bucket_candidates.values(), key=lambda s: s.get("useCount") or 0, reverse=True)[:POPULAR_PER_DOMAIN]
+        per_domain_added = 0
+        for s in top:
+            qn = s["qualifiedName"]
+            seen_qn.add(qn)
+            resolved.append((s, domain))
+            per_domain_added += 1
+            logger.info(f"pass_b_popular domain={domain} qn={qn} useCount={s.get('useCount')}")
+        logger.info(f"pass_b_domain_total domain={domain} added={per_domain_added}")
+
+    return resolved
 
 
 # --- Phase 2: Filter listings ----------------------------------------------
 
 
 def is_canonical(server: dict) -> bool:
-    return bool(server.get("verified")) and (server.get("slug") or "") == ""
+    """Keep only Smithery-verified servers (canonical and namespaced both OK)."""
+    return bool(server.get("verified"))
 
 
 # --- Phase 3: Sample per domain --------------------------------------------
@@ -444,39 +564,35 @@ def main() -> int:
 
     client = make_client(api_key)
 
-    # 1. List
-    listings = fetch_all_listings(client)
-    print(f"[1/9] fetched {len(listings)} listings", file=sys.stderr)
-
-    # 2. Filter listings
-    canonical = [s for s in listings if is_canonical(s)]
-    print(
-        f"[2/9] canonical (verified=true, slug=''): {len(canonical)} / {len(listings)}",
-        file=sys.stderr,
-    )
-
-    # 3. Sample per domain
-    sampled = sample_per_domain(canonical, args.per_domain)
-    print(f"[3/9] sampled {len(sampled)} servers for detail fetch", file=sys.stderr)
+    # 1-3. Resolve vendor allowlist to Smithery servers (search + best-match)
+    resolved = fetch_all_listings(client)
+    print(f"[1-3/9] resolved {len(resolved)} vendor MCPs from allowlist", file=sys.stderr)
 
     # 4. Fetch details
     details: list[tuple[dict, dict]] = []
-    for i, srv in enumerate(sampled, 1):
+    for i, (srv, _domain) in enumerate(resolved, 1):
         d = fetch_detail(client, srv["qualifiedName"])
         if d:
             details.append((srv, d))
-        if i % 10 == 0:
-            print(f"[4/9] fetched {i}/{len(sampled)} details", file=sys.stderr)
+        if i % 25 == 0:
+            print(f"[4/9] fetched {i}/{len(resolved)} details", file=sys.stderr)
     print(f"[4/9] fetched {len(details)} details total", file=sys.stderr)
 
-    # 5. Normalize
+    # 5. Normalize (with per-MCP cap to prevent slack/github/discord domination)
     candidates: list[ToolSchema] = []
     for srv, detail in details:
-        for tool_dict in detail.get("tools", []) or []:
+        # Sort tools alphabetically for determinism, take top N per MCP
+        all_tools = sorted(detail.get("tools", []) or [], key=lambda t: t.get("name", ""))
+        capped = all_tools[:PER_MCP_TOOL_CAP]
+        for tool_dict in capped:
             ts = normalize_one(srv, tool_dict)
             if ts is not None:
                 candidates.append(ts)
-    print(f"[5/9] normalized to {len(candidates)} ToolSchema records", file=sys.stderr)
+    print(
+        f"[5/9] normalized to {len(candidates)} ToolSchema records "
+        f"(per-MCP cap={PER_MCP_TOOL_CAP})",
+        file=sys.stderr,
+    )
 
     # 6. Aggressive filter
     drop_counts: dict[str, int] = defaultdict(int)
