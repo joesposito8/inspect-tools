@@ -21,12 +21,14 @@ async def _fill_prefix(
     base_infos: list[ToolInfo],
     pool_infos: list[ToolInfo],
     target: int,
-) -> int:
-    """Smallest n such that count(base + pool_infos[:n]) >= target,
-    or len(pool_infos) if unreachable.
+) -> tuple[int, int]:
+    """Returns (n, actual_tokens). n is the smallest prefix length such that
+    count(base + pool_infos[:n]) >= target, or len(pool_infos) if unreachable.
+    actual_tokens is the model-side count for the chosen prefix.
 
-    Galloping search (double until cross), then binary search inside the bracket.
-    ~5-8 model.count_tool_tokens calls per trial; free for Anthropic.
+    Galloping search (double until cross), then binary search inside the bracket,
+    plus one final count for the chosen prefix. ~6-9 model.count_tool_tokens calls
+    per trial; free for Anthropic.
     """
     n = 1
     while n <= len(pool_infos):
@@ -40,7 +42,8 @@ async def _fill_prefix(
             lo = mid + 1
         else:
             hi = mid
-    return lo
+    actual = await model.count_tool_tokens(base_infos + pool_infos[:lo])
+    return lo, actual
 
 
 @solver
@@ -83,11 +86,14 @@ def context_exhaustion(
         indices = list(range(len(filtered_pool)))
         rng.shuffle(indices)
 
+        actual_tokens: int | None = None
         if target_tokens is not None and filtered_pool:
             model = get_model()
             base_infos = [tool_to_tool_info(t) for t in state.tools]
             shuffled_infos = [pool_tool_infos[i] for i in indices]
-            n = await _fill_prefix(model, base_infos, shuffled_infos, target_tokens)
+            n, actual_tokens = await _fill_prefix(
+                model, base_infos, shuffled_infos, target_tokens
+            )
             chosen = [filtered_pool[i] for i in indices[:n]]
         else:
             n = min(n_filler, len(filtered_pool))
@@ -110,6 +116,7 @@ def context_exhaustion(
         manifest["pool_filter"] = pool_filter_dict
         manifest["library_seed_per_sample"] = trial_seed
         manifest["target_tokens"] = target_tokens
+        manifest["actual_tokens"] = actual_tokens
         manifest.setdefault("invocations", 0)  # execute closures increment from here
 
         return state

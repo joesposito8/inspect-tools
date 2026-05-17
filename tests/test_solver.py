@@ -192,7 +192,38 @@ async def test_manifest_all_keys_present(make_state, noop_generate):
     assert "pool_filter" in manifest
     assert "library_seed_per_sample" in manifest
     assert "target_tokens" in manifest
+    assert "actual_tokens" in manifest
     assert "invocations" in manifest
+
+
+async def test_manifest_actual_tokens_none_in_literal_mode(make_state, noop_generate):
+    """Literal mode does no token counting → actual_tokens stays None."""
+    solver = context_exhaustion(n_filler=3)
+    state = make_state()
+    await solver(state, noop_generate)
+    assert state.metadata["inspect_tools"]["context_exhaustion"]["actual_tokens"] is None
+
+
+async def test_manifest_actual_tokens_reaches_target(make_state, noop_generate, mock_model):
+    """Depth mode: actual_tokens should be >= target (overshoot allowed) when pool reachable."""
+    solver = context_exhaustion(target_tokens=300)
+    state = make_state()
+    with patch("inspect_tools._solver.get_model", return_value=mock_model):
+        await solver(state, noop_generate)
+    actual = state.metadata["inspect_tools"]["context_exhaustion"]["actual_tokens"]
+    assert actual == 300  # mock_model returns 100 * len(tools); n=3 → 300
+
+
+async def test_manifest_actual_tokens_pool_exhausted(make_state, noop_generate, mock_model):
+    """Pool exhausted before target → actual_tokens is the full-pool count."""
+    solver = context_exhaustion(target_tokens=10_000)
+    state = make_state()
+    with patch("inspect_tools._solver.get_model", return_value=mock_model):
+        await solver(state, noop_generate)
+    actual = state.metadata["inspect_tools"]["context_exhaustion"]["actual_tokens"]
+    # 7 fixtures × 100 = 700
+    assert actual == 100 * len(state.tools)
+    assert actual < 10_000  # confirms unreachable
 
 
 async def test_manifest_pool_filter_reflects_kwargs(make_state, noop_generate):
