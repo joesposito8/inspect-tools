@@ -3,14 +3,11 @@
 score_at_depth:  mean per depth + 95% CI (Wilson if {0,1}; bootstrap otherwise).
 score_drop_pp:   sign-aware (baseline_mean - depth_mean) * 100 per non-baseline depth.
 
-Both metrics group by sample_metadata["inspect_tools"]["context_exhaustion"]["target_tokens"].
-Samples missing that path (or with target_tokens=None for literal-mode trials) are dropped.
+Both group by sample_metadata["inspect_tools"]["context_exhaustion"]["target_tokens"];
+samples missing that path (or target_tokens=None for literal-mode trials) are dropped.
 
-The seed= kwarg diverges from Inspect's bootstrap_stderr (which uses the global RNG and
-exposes no seed) — required by the task brief for reproducibility.
-
-Epoch reduction runs before metrics (inspect_ai/_eval/task/results.py), so CIs reflect
-cross-sample variance only; within-sample epoch variance is already collapsed.
+CIs reflect cross-sample variance only — Inspect's epoch reducer collapses within-sample
+variance before metrics run.
 """
 from __future__ import annotations
 
@@ -50,10 +47,10 @@ def _group_by_depth(
                 node = None
                 break
             node = node[key]
-        if node is None or not isinstance(node, int):
+        if isinstance(node, int):
+            groups.setdefault(node, []).append(to_float(s.score.value))
+        else:
             dropped += 1
-            continue
-        groups.setdefault(node, []).append(to_float(s.score.value))
     if dropped:
         logger.warning(
             "depth-aware metric: dropped %d sample(s) missing "
@@ -77,33 +74,35 @@ def _wilson_ci(values: list[float]) -> tuple[float, float, float]:
     return p, max(0.0, center - half), min(1.0, center + half)
 
 
+def _bootstrap_means(values: list[float], rng: np.random.Generator, n_boot: int) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 1:
+        return arr
+    idx = rng.integers(0, arr.size, size=(n_boot, arr.size))
+    return arr[idx].mean(axis=1)
+
+
 def _bootstrap_ci(
     values: list[float], rng: np.random.Generator, n_boot: int
 ) -> tuple[float, float, float]:
-    arr = np.asarray(values, dtype=float)
-    mean = float(arr.mean())
-    if arr.size == 1:
+    mean = sum(values) / len(values)
+    means = _bootstrap_means(values, rng, n_boot)
+    if means.size == 1:
         return mean, mean, mean
-    idx = rng.integers(0, arr.size, size=(n_boot, arr.size))
-    means = arr[idx].mean(axis=1)
     lo, hi = np.quantile(means, [0.025, 0.975])
     return mean, float(lo), float(hi)
 
 
 def _bootstrap_diff_ci(
-    baseline: list[float],
+    baseline_means: np.ndarray,
+    baseline_pt: float,
     depth: list[float],
     rng: np.random.Generator,
     n_boot: int,
 ) -> tuple[float, float, float]:
-    b = np.asarray(baseline, dtype=float)
-    d = np.asarray(depth, dtype=float)
-    diff_pp = (float(b.mean()) - float(d.mean())) * 100.0
-    if b.size == 1 and d.size == 1:
-        return diff_pp, diff_pp, diff_pp
-    b_idx = rng.integers(0, b.size, size=(n_boot, b.size))
-    d_idx = rng.integers(0, d.size, size=(n_boot, d.size))
-    diffs = (b[b_idx].mean(axis=1) - d[d_idx].mean(axis=1)) * 100.0
+    diff_pp = (baseline_pt - sum(depth) / len(depth)) * 100.0
+    d_means = _bootstrap_means(depth, rng, n_boot)
+    diffs = (baseline_means - d_means) * 100.0
     lo, hi = np.quantile(diffs, [0.025, 0.975])
     return diff_pp, float(lo), float(hi)
 
@@ -186,12 +185,14 @@ def score_drop_pp(
             ref = baseline
         ref_values = groups[ref]
         rng = np.random.default_rng(seed)
+        ref_pt = sum(ref_values) / len(ref_values)
+        ref_means = _bootstrap_means(ref_values, rng, num_bootstrap)
         out: dict[str, float] = {}
         for depth in sorted(groups):
             if depth == ref:
                 continue
             drop, lo, hi = _bootstrap_diff_ci(
-                ref_values, groups[depth], rng, num_bootstrap
+                ref_means, ref_pt, groups[depth], rng, num_bootstrap
             )
             key = str(depth)
             out[key] = drop
