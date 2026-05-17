@@ -10,6 +10,7 @@ from inspect_tools.schema import ToolSchema
 CORPUS_VERSION = "v1"
 _CORPUS_RESOURCE = files("inspect_tools.data") / "tool_schemas_v1.json"
 _CORPUS_CACHE: list[ToolSchema] | None = None
+_CORPUS_SHA_CACHE: str | None = None
 
 
 def load_corpus() -> list[ToolSchema]:
@@ -23,7 +24,10 @@ def load_corpus() -> list[ToolSchema]:
 
 def corpus_sha() -> str:
     """16-char prefix of SHA-256 of the corpus file. For ICP-6's manifest."""
-    return hashlib.sha256(_CORPUS_RESOURCE.read_bytes()).hexdigest()[:16]
+    global _CORPUS_SHA_CACHE
+    if _CORPUS_SHA_CACHE is None:
+        _CORPUS_SHA_CACHE = hashlib.sha256(_CORPUS_RESOURCE.read_bytes()).hexdigest()[:16]
+    return _CORPUS_SHA_CACHE
 
 
 def filter_pool(
