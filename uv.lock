@@ -962,6 +962,8 @@ source = { editable = "." }
 dependencies = [
     { name = "inspect-ai" },
     { name = "mcp" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "tiktoken" },
 ]
 
@@ -975,6 +977,7 @@ dev = [
 requires-dist = [
     { name = "inspect-ai", specifier = ">=0.3.0" },
     { name = "mcp", specifier = ">=1.27" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "tiktoken", specifier = ">=0.7.0" },
