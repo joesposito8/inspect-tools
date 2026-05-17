@@ -40,19 +40,17 @@ def filter_pool(
     content_category=None skips the category filter. context_exhaustion passes
     ["general_popular"]; v1.x sibling solvers pass ["injection"] or ["tool_shadowing"].
     """
+    cat_set = set(content_category) if content_category is not None else None
+    excl_set = set(exclude_names) if exclude_names else set()
     pool = list(library)
-    if content_category is not None:
-        allowed = set(content_category)
-        pool = [s for s in pool if s.content_category in allowed]
+    if cat_set is not None:
+        pool = [s for s in pool if s.content_category in cat_set]
     if domain_filter is not None:
-        allowed = set(domain_filter)
-        pool = [s for s in pool if s.domain in allowed]
-    if exclude_names:
-        excluded = set(exclude_names)
-        pool = [s for s in pool if s.name not in excluded]
+        domain_set = set(domain_filter)
+        pool = [s for s in pool if s.domain in domain_set]
+    if excl_set:
+        pool = [s for s in pool if s.name not in excl_set]
     if extend_with:
-        cat_set = set(content_category) if content_category is not None else None
-        excl_set = set(exclude_names) if exclude_names else set()
         for s in extend_with:
             if cat_set is not None and s.content_category not in cat_set:
                 continue

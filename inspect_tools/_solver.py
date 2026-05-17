@@ -13,6 +13,8 @@ from inspect_tools._library import filter_pool, load_corpus
 from inspect_tools._seed import derive_seed
 from inspect_tools.schema import ToolSchema
 
+_CONTENT_CATEGORY = ["general_popular"]
+
 
 async def _fill_prefix(
     model,
@@ -60,7 +62,7 @@ def context_exhaustion(
     # Hoist at @solver construction time
     filtered_pool = filter_pool(
         load_corpus(),
-        content_category=["general_popular"],
+        content_category=_CONTENT_CATEGORY,
         domain_filter=domain_filter,
         exclude_names=exclude_names,
         extend_with=extend_with,
@@ -69,7 +71,7 @@ def context_exhaustion(
     pool_filter_dict = {
         "target_tokens": target_tokens,
         "n_filler": n_filler,
-        "content_category": ["general_popular"],
+        "content_category": _CONTENT_CATEGORY,
         "domain_filter": domain_filter,
         "exclude_names": exclude_names,
         "extend_with_names": [s.name for s in extend_with] if extend_with else [],
