@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import random
 
+from inspect_ai.hooks import Hooks, ModelUsageData, hooks
 from inspect_ai.model import get_model
 from inspect_ai.solver import Generate, Solver, TaskState, solver
+from inspect_ai.solver._task_state import sample_state
 from inspect_ai.tool._tool_info import ToolInfo
 from inspect_ai.tool._tool_util import tool_to_tool_info
 
 from inspect_tools._inject import schema_to_tool_def, schema_to_tool_info
-from inspect_tools._library import filter_pool, load_corpus
+from inspect_tools._library import corpus_sha, filter_pool, load_corpus
 from inspect_tools._seed import derive_seed
 from inspect_tools.schema import ToolSchema
 
@@ -81,7 +83,7 @@ def context_exhaustion(
     }
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
-        trial_seed = derive_seed(state.sample_id, state.epoch, target_tokens or 0)
+        trial_seed = derive_seed(state.sample_id, state.epoch)
         rng = random.Random(trial_seed)
         indices = list(range(len(filtered_pool)))
         rng.shuffle(indices)
@@ -117,8 +119,29 @@ def context_exhaustion(
         manifest["library_seed_per_sample"] = trial_seed
         manifest["target_tokens"] = target_tokens
         manifest["actual_tokens"] = actual_tokens
+        manifest["corpus_sha"] = corpus_sha()
         manifest.setdefault("invocations", 0)  # execute closures increment from here
 
         return state
 
     return solve
+
+
+@hooks(
+    name="inspect_tools_billed_input",
+    description="Capture first model call's billed input tokens into the context_exhaustion manifest.",
+)
+class _BilledInputHook(Hooks):
+    async def on_model_usage(self, data: ModelUsageData) -> None:
+        state = sample_state()
+        if state is None:
+            return
+        m = state.metadata.get("inspect_tools", {}).get("context_exhaustion")
+        if not m or m.get("billed_input_tokens") is not None:
+            return
+        u = data.usage
+        m["billed_input_tokens"] = (
+            u.input_tokens
+            + (u.input_tokens_cache_read or 0)
+            + (u.input_tokens_cache_write or 0)
+        )

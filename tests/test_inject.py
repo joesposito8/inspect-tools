@@ -221,3 +221,29 @@ def test_real_corpus_smoke_schema_to_tool_def(make_state):
             trial_seed=42,
         )
         assert td.name == schema.name
+
+
+def test_execute_signature_is_introspectable(make_state):
+    """Inspect's tool-call dispatch (_call_tools.py:719) does
+    `typing.get_type_hints(execute)` and raises ValueError if any
+    `signature.parameters` entry is missing a hint. The `**kwargs` form needs
+    `**kwargs: Any` — silently masked when the model never invokes an
+    injected tool. Caught during ICP audit Phase C.5."""
+    import inspect
+    import typing
+
+    td = schema_to_tool_def(
+        _basic_schema(),
+        state=make_state(),
+        solver_namespace="context_exhaustion",
+        trial_seed=42,
+    )
+    sig = inspect.signature(td.tool)
+    hints = typing.get_type_hints(td.tool)
+    for param_name in sig.parameters:
+        assert param_name in hints, (
+            f"_inject.execute signature parameter {param_name!r} has no type "
+            f"annotation; Inspect's tool dispatch will fail when the model "
+            f"actually invokes an injected tool. Annotate as `: Any` (mirrors "
+            f"inspect_ai/tool/_mcp/_local.py)."
+        )

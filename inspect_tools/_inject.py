@@ -8,7 +8,7 @@ Mirrors inspect_ai/tool/_mcp/_local.py:201-250.
 from __future__ import annotations
 
 import random
-from typing import Callable
+from typing import Any, Callable
 
 from inspect_ai.solver import TaskState
 from inspect_ai.tool import ToolDef
@@ -53,7 +53,7 @@ def schema_to_tool_def(
     Per-(trial, tool) RNG seeding ensures same-trial reproducibility of response packages.
     """
 
-    async def execute(**kwargs) -> dict | str:
+    async def execute(**kwargs: Any) -> dict | str:
         sub = state.metadata.setdefault("inspect_tools", {}).setdefault(
             solver_namespace, {}
         )

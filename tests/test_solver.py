@@ -193,7 +193,21 @@ async def test_manifest_all_keys_present(make_state, noop_generate):
     assert "library_seed_per_sample" in manifest
     assert "target_tokens" in manifest
     assert "actual_tokens" in manifest
+    assert "corpus_sha" in manifest
     assert "invocations" in manifest
+
+
+async def test_manifest_corpus_sha_matches_library(make_state, noop_generate):
+    """Manifest records the corpus sha the trial was built against, so EvalLogs
+    are tied to a specific corpus version and stay comparable across re-runs."""
+    from inspect_tools._library import corpus_sha
+    solver = context_exhaustion(n_filler=2)
+    state = make_state()
+    await solver(state, noop_generate)
+    manifest = state.metadata["inspect_tools"]["context_exhaustion"]
+    assert manifest["corpus_sha"] == corpus_sha()
+    assert isinstance(manifest["corpus_sha"], str)
+    assert len(manifest["corpus_sha"]) == 16
 
 
 async def test_manifest_actual_tokens_none_in_literal_mode(make_state, noop_generate):
@@ -249,3 +263,36 @@ async def test_manifest_target_tokens_captured(make_state, noop_generate, mock_m
     with patch("inspect_tools._solver.get_model", return_value=mock_model):
         await solver(state, noop_generate)
     assert state.metadata["inspect_tools"]["context_exhaustion"]["target_tokens"] == 4_000
+
+
+# === Depth-axis prefix-nesting (V8) ===
+
+
+async def test_depth_prefix_nesting(make_state, noop_generate, mock_model):
+    """Same (sample_id, epoch), different target_tokens → smaller depth's injected
+    set is a strict prefix of larger depth's. Enables clean attribution of score
+    movement to 'tools added' rather than 'completely different tools'."""
+    small = context_exhaustion(target_tokens=300)
+    large = context_exhaustion(target_tokens=600)
+    s_small = make_state(sample_id="X", epoch=1)
+    s_large = make_state(sample_id="X", epoch=1)
+    with patch("inspect_tools._solver.get_model", return_value=mock_model):
+        await small(s_small, noop_generate)
+        await large(s_large, noop_generate)
+    names_small = s_small.metadata["inspect_tools"]["context_exhaustion"]["injected_tool_names"]
+    names_large = s_large.metadata["inspect_tools"]["context_exhaustion"]["injected_tool_names"]
+    assert len(names_small) < len(names_large)
+    assert names_large[: len(names_small)] == names_small
+
+
+async def test_depth_seed_independent_of_target_tokens(make_state, noop_generate, mock_model):
+    """library_seed_per_sample is the SAME across depths for a fixed (sample_id, epoch)."""
+    s_a = make_state(sample_id="X", epoch=1)
+    s_b = make_state(sample_id="X", epoch=1)
+    with patch("inspect_tools._solver.get_model", return_value=mock_model):
+        await context_exhaustion(target_tokens=300)(s_a, noop_generate)
+        await context_exhaustion(target_tokens=600)(s_b, noop_generate)
+    assert (
+        s_a.metadata["inspect_tools"]["context_exhaustion"]["library_seed_per_sample"]
+        == s_b.metadata["inspect_tools"]["context_exhaustion"]["library_seed_per_sample"]
+    )

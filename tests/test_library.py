@@ -126,6 +126,32 @@ def test_corpus_names_are_provider_compatible():
     assert not bad, f"names violate ^[a-zA-Z0-9_-]{{1,128}}$: {bad}"
 
 
+def test_corpus_names_are_unique():
+    """Anthropic /v1/messages rejects duplicate tool names. Caught during ICP audit
+    when 13 cross-vendor dupe groups (e.g. `create_project` ×5) hit 64K trials."""
+    from collections import Counter
+    counts = Counter(s.name for s in load_corpus())
+    dupes = {n: c for n, c in counts.items() if c > 1}
+    assert not dupes, f"duplicate tool names in corpus: {dupes}"
+
+
+def test_corpus_property_keys_are_provider_compatible():
+    """Anthropic /v1/messages validates inputSchema.properties keys against
+    `^[a-zA-Z0-9_.-]{1,64}$`. count_tokens is lenient so the bisection misses
+    violations — only generate() fails. Caught during ICP audit on
+    `ONE_DRIVE_COPY_ITEM.@microsoft.graph.conflictBehavior`."""
+    import re
+    pattern = re.compile(r"^[a-zA-Z0-9_.-]{1,64}$")
+    bad = []
+    for s in load_corpus():
+        for k in (s.inputSchema or {}).get("properties", {}).keys():
+            if not pattern.match(k):
+                bad.append((s.name, k))
+    assert not bad, (
+        f"input_schema property keys violate ^[a-zA-Z0-9_.-]{{1,64}}$: {bad}"
+    )
+
+
 def test_tool_schema_rejects_invalid_name():
     with pytest.raises(ValueError, match="provider regex"):
         ToolSchema(
