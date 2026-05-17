@@ -265,10 +265,24 @@ def gate_placeholder_keys_valid(schema: dict) -> list[str]:
                 if depth == 0:
                     content = s[i + 1 : j - 1]
                     pipe = content.find("|")
-                    if pipe > 0:
-                        yield content[:pipe].strip()
-                        i = j
-                        continue
+                    # Only treat as a candidate placeholder if content has NO
+                    # nested braces — otherwise it's literal content (HTML
+                    # templates, Solidity source, JSON snippets) that happens
+                    # to contain `{...|...}`-shaped substrings. The real inner
+                    # placeholders are picked up by the recursive i+=1 scan
+                    # below.
+                    if pipe > 0 and "{" not in content and "}" not in content:
+                        key = content[:pipe].strip()
+                        # Only flag candidates whose key portion is plausibly
+                        # intended as a placeholder — alphanumeric, underscore,
+                        # dot, bracket, hyphen only. Code-shaped content
+                        # (spaces, operators, parens) is incidental.
+                        if key and all(
+                            c.isalnum() or c in "_.-[]" for c in key
+                        ):
+                            yield key
+                            i = j
+                            continue
             i += 1
 
     for pi, pkg in enumerate(schema.get("examples", [])):
