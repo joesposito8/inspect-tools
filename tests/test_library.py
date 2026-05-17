@@ -117,3 +117,20 @@ def test_filter_pool_does_not_mutate_input():
     original_len = len(FIXTURE_SCHEMAS)
     filter_pool(FIXTURE_SCHEMAS, domain_filter=["cloud-ops"])
     assert len(FIXTURE_SCHEMAS) == original_len
+
+
+def test_corpus_names_are_provider_compatible():
+    import re
+    pattern = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
+    bad = [s.name for s in load_corpus() if not pattern.match(s.name)]
+    assert not bad, f"names violate ^[a-zA-Z0-9_-]{{1,128}}$: {bad}"
+
+
+def test_tool_schema_rejects_invalid_name():
+    with pytest.raises(ValueError, match="provider regex"):
+        ToolSchema(
+            name="bad.name",
+            description="x",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+            source_url="https://test.fixture/x",
+        )
