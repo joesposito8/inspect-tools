@@ -14,3 +14,9 @@ __pycache__/
 /HANDOFF.md
 /FILLER_SELECTION.md
 /INVESTIGATION.md
+
+# Internal-only audit/research scratch
+/audit/
+
+# Intermediate scrape output (regenerable via scripts/scrape_tool_schemas.py)
+/inspect_tools/data/tool_schemas_v1.candidates.json
