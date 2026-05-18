@@ -8,3 +8,9 @@ __pycache__/
 .claude/
 .cache/
 *.egg-info/
+
+# Internal-only docs (kept local, never published)
+/CLAUDE.md
+/HANDOFF.md
+/FILLER_SELECTION.md
+/INVESTIGATION.md
