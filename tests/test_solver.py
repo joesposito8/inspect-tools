@@ -191,13 +191,15 @@ async def test_manifest_all_keys_present(make_state, noop_generate):
     assert "injected_tool_names" in manifest
     assert "pool_filter" in manifest
     assert "library_seed_per_sample" in manifest
+    assert "sampling_seed" in manifest
+    assert manifest["sampling_seed"] == manifest["library_seed_per_sample"]
     assert "target_tokens" in manifest
     assert "actual_tokens" in manifest
-    assert "corpus_sha" in manifest
-    assert "invocations" in manifest
+    assert "tool_corpus_version" in manifest
+    assert "filler_invocations" in manifest
 
 
-async def test_manifest_corpus_sha_matches_library(make_state, noop_generate):
+async def test_manifest_tool_corpus_version_matches_library(make_state, noop_generate):
     """Manifest records the corpus sha the trial was built against, so EvalLogs
     are tied to a specific corpus version and stay comparable across re-runs."""
     from inspect_tools._library import corpus_sha
@@ -205,9 +207,9 @@ async def test_manifest_corpus_sha_matches_library(make_state, noop_generate):
     state = make_state()
     await solver(state, noop_generate)
     manifest = state.metadata["inspect_tools"]["context_exhaustion"]
-    assert manifest["corpus_sha"] == corpus_sha()
-    assert isinstance(manifest["corpus_sha"], str)
-    assert len(manifest["corpus_sha"]) == 16
+    assert manifest["tool_corpus_version"] == corpus_sha()
+    assert isinstance(manifest["tool_corpus_version"], str)
+    assert len(manifest["tool_corpus_version"]) == 16
 
 
 async def test_manifest_actual_tokens_none_in_literal_mode(make_state, noop_generate):

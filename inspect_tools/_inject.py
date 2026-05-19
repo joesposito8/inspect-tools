@@ -48,7 +48,7 @@ def schema_to_tool_def(
     response_fn: ResponseFn = synthesize_response,
 ) -> ToolDef:
     """Executable ToolDef. Writes invocation telemetry under
-    state.metadata['inspect_tools'][solver_namespace]['invocations'].
+    state.metadata['inspect_tools'][solver_namespace]['filler_invocations'].
 
     Per-(trial, tool) RNG seeding ensures same-trial reproducibility of response packages.
     """
@@ -57,7 +57,7 @@ def schema_to_tool_def(
         sub = state.metadata.setdefault("inspect_tools", {}).setdefault(
             solver_namespace, {}
         )
-        sub["invocations"] = sub.get("invocations", 0) + 1
+        sub["filler_invocations"] = sub.get("filler_invocations", 0) + 1
         call_rng = random.Random(derive_seed(trial_seed, schema.name))
         return response_fn(schema, kwargs, call_rng)
 

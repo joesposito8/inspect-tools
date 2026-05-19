@@ -93,9 +93,9 @@ async def test_invocation_increments_default_namespace(make_state):
     )
     tool = td.as_tool()
     await tool(x="hello")
-    assert state.metadata["inspect_tools"]["context_exhaustion"]["invocations"] == 1
+    assert state.metadata["inspect_tools"]["context_exhaustion"]["filler_invocations"] == 1
     await tool(x="world")
-    assert state.metadata["inspect_tools"]["context_exhaustion"]["invocations"] == 2
+    assert state.metadata["inspect_tools"]["context_exhaustion"]["filler_invocations"] == 2
 
 
 async def test_invocation_custom_namespace(make_state):
@@ -109,7 +109,7 @@ async def test_invocation_custom_namespace(make_state):
     )
     tool = td.as_tool()
     await tool(x="hello")
-    assert state.metadata["inspect_tools"]["test_sibling"]["invocations"] == 1
+    assert state.metadata["inspect_tools"]["test_sibling"]["filler_invocations"] == 1
 
 
 async def test_default_response_fn_is_synthesize_response(make_state):

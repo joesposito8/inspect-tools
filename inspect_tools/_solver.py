@@ -17,6 +17,10 @@ from inspect_tools.schema import ToolSchema
 
 _CONTENT_CATEGORY = ["general_popular"]
 
+# Set True when context_exhaustion() is constructed in this process. The
+# run-level manifest hook in _manifest.py reads this to gate writes.
+_CONTEXT_EXHAUSTION_ACTIVE = False
+
 
 async def _fill_prefix(
     model,
@@ -64,6 +68,8 @@ def context_exhaustion(
     Multi-depth sweeps: define `@task def my_eval(target_tokens: int)` and run
     `eval_set([my_eval(d) for d in depths])`. Variance studies: pass `epochs=N`.
     """
+    global _CONTEXT_EXHAUSTION_ACTIVE
+    _CONTEXT_EXHAUSTION_ACTIVE = True
     # Hoist at @solver construction time
     filtered_pool = filter_pool(
         load_corpus(),
@@ -117,10 +123,11 @@ def context_exhaustion(
         manifest["injected_tool_names"] = [s.name for s in chosen]
         manifest["pool_filter"] = pool_filter_dict
         manifest["library_seed_per_sample"] = trial_seed
+        manifest["sampling_seed"] = trial_seed
         manifest["target_tokens"] = target_tokens
         manifest["actual_tokens"] = actual_tokens
-        manifest["corpus_sha"] = corpus_sha()
-        manifest.setdefault("invocations", 0)  # execute closures increment from here
+        manifest["tool_corpus_version"] = corpus_sha()
+        manifest.setdefault("filler_invocations", 0)  # execute closures increment from here
 
         return state
 
