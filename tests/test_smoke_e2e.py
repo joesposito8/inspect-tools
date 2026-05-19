@@ -1,10 +1,9 @@
-"""End-to-end smoke for ICP-7: wrap a stub Task at 2 depths, confirm manifest
-is written run-level and per-sample, and metrics aggregate across depths."""
+"""End-to-end smoke: wrap a stub Task at 2 depths, confirm both layers of the
+manifest are written, and metrics aggregate across depths."""
 from __future__ import annotations
 
 import json
 
-import pytest
 from inspect_ai import Task, eval, task
 from inspect_ai.dataset import MemoryDataset, Sample
 from inspect_ai.scorer import Score, Target, scorer
@@ -123,5 +122,5 @@ def test_e2e_two_depths_manifest_and_metrics(tmp_path, capsys):
         ps["injected_tool_names"][:3] + ["..."] if ps.get("injected_tool_names") else []
     )
     snippet["per_sample_first"] = ps
-    print("\n=== ICP-7 e2e manifest snippet ===")
+    print("\n=== e2e manifest snippet ===")
     print(json.dumps(snippet, indent=2, default=str))
